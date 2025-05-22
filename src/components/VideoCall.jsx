@@ -1,5 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import io from 'socket.io-client';
+import activeMic from '../assets/icons/mic-on.svg'
+import inactiveMic from '../assets/icons/mic-off.svg';
+import cameraIcon from '../assets/icons/camera.svg';
+import cameraOff from '../assets/icons/camera-off.svg';
+import screenShare from '../assets/icons/screen-share.svg';
+import stopScreenShare from '../assets/icons/screen-stop.svg';
+import endCallIcon from '../assets/icons/call-end.svg';
 
 const SIGNALING_SERVER_URL = import.meta.env.VITE_SIGNALING_SERVER_URL;
 const ICE_SERVERS = { iceServers: [
@@ -62,9 +69,10 @@ export default function VideoCall({ roomID }) {
       <video ref={remoteRef} autoPlay playsInline className="remote-video" />
       <video ref={localRef} autoPlay muted playsInline className="local-video" />
       <div className="controls">
-        <button onClick={toggleMute}>{muted?'Unmute':'Mute'}</button>
-        <button onClick={toggleVideo}>{videoOff?'Start Video':'Stop Video'}</button>
-        <button onClick={toggleShare}>{sharing?'Stop Share':'Share Screen'}</button>
+        <button className='call-btn' onClick={toggleMute}>{muted? <img className='call-icon' src={inactiveMic} alt="Mic" /> : <img className='call-icon' src={activeMic} alt="Mic" /> }</button>
+        <button className='call-btn' onClick={toggleVideo}>{videoOff? <img className='call-icon' src={cameraOff} alt="camera" /> : <img className='call-icon' src={cameraIcon} alt="camera" /> }</button>
+        <button className='call-btn' onClick={toggleShare}>{sharing? <img className='call-icon' src={stopScreenShare} alt="screen" /> : <img className='call-icon' src={screenShare} alt="screen" /> }</button>
+        <button className='call-btn' onClick={()=>{socket.current.disconnect();window.location.reload();}}><img className='call-icon' src={endCallIcon} alt="End Call" /></button>
       </div>
     </div>
   );

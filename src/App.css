@@ -35,7 +35,7 @@
   margin: 0.5rem 0;
   width: 100%;
 }
-.join-container button {
+.join-container .join-btn {
   padding: 0.5rem 1rem;
   margin-top: 1rem;
   border: none;
@@ -49,18 +49,19 @@
   width: 100%;
   height: 100%;
   background: black;
+  overflow-y: hidden;
 }
 .remote-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .local-video {
   position: absolute;
-  bottom: 1rem;
+  bottom: 5rem;
   right: 1rem;
-  width: 150px;
-  height: 120px;
+  width: 20%;
+  height: 20%;
   object-fit: cover;
   border: 2px solid white;
   border-radius: 0.5rem;
@@ -73,17 +74,31 @@
   display: flex;
   gap: 1rem;
 }
-.controls button {
-  padding: 0.5rem;
+
+.call-btn{
+  box-sizing: border-box;
+  background-color: #242424;
   border: none;
-  background: rgba(0,0,0,0.6);
-  color: white;
-  border-radius: 50%;
-  width: 3rem;
-  height: 3rem;
   cursor: pointer;
+  fill: #242424;
+  border-radius: 3rem;
+  padding: 0;
 }
 
+.call-icon{
+  box-sizing: border-box;
+  border: none;
+  cursor: pointer;
+  height: 3rem;
+  width: 3rem;
+  object-fit: contain;
+  max-width: 50px;
+  max-height: 50px;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  top: 1.5px;
+}
 
 
 

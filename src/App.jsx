@@ -30,7 +30,7 @@ export default function App() {
             value={roomID}
             onChange={e => setRoomID(e.target.value)}
           />
-          <button onClick={joinRoom} disabled={!roomID.trim()}>
+          <button className='join-btn' onClick={joinRoom}>
             Join
           </button>
         </div>
