@@ -24,90 +24,81 @@ export default function VideoCall({ roomID }) {
   const [videoOff, setVideoOff] = useState(false);
 
   useEffect(() => {
-    // Initialize the socket connection to the signaling server
-    socketRef.current = io(SIGNALING_SERVER_URL);
+    socket.current = io(SIGNALING_SERVER_URL);
 
-    // Request access to the user's media devices (camera and microphone)
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        // Set the local video element's source to the user's media stream
-        localVideoRef.current.srcObject = stream;
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+      localRef.current.srcObject = stream;
 
-        // Create a new RTCPeerConnection instance with ICE server configurations
-        pcRef.current = new RTCPeerConnection(ICE_SERVERS);
+      pc.current = new RTCPeerConnection(ICE_SERVERS);
 
-        // Add each track (audio/video) from the user's media stream to the peer connection
-        stream.getTracks().forEach(track => {
-          pcRef.current.addTrack(track, stream);
-        });
+      stream.getTracks().forEach((track) => pc.current.addTrack(track, stream));
 
-        // Handle the generation of ICE candidates
-        pcRef.current.onicecandidate = event => {
-          if (event.candidate) {
-            // Send the ICE candidate to the signaling server
-            socketRef.current.emit('signal', {
-              to: roomID, // Target room ID
-              from: socketRef.current.id, // Current user's socket ID
-              data: { candidate: event.candidate }, // ICE candidate data
+      pc.current.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('Generated ICE Candidate:', event.candidate);
+          socket.current.emit('signal', {
+            to: roomID,
+            from: socket.current.id,
+            data: { candidate: event.candidate },
+          });
+          console.log('Shared ICE Candidate:', event.candidate);
+        }
+      };
+
+      pc.current.ontrack = (event) => {
+        console.log('Received remote track:', event.streams[0]);
+        remoteRef.current.srcObject = event.streams[0];
+      };
+
+      socket.current.emit('join-room', roomID);
+      console.log('Joined room:', roomID);
+
+      socket.current.on('user-connected', (id) => {
+        console.log('User connected:', id);
+        pc.current
+          .createOffer()
+          .then((offer) => {
+            console.log('Generated SDP Offer:', offer);
+            return pc.current.setLocalDescription(offer);
+          })
+          .then(() => {
+            socket.current.emit('signal', {
+              to: id,
+              from: socket.current.id,
+              data: { sdp: pc.current.localDescription },
             });
-          }
-        };
-
-        // Handle incoming media tracks from the remote peer
-        pcRef.current.ontrack = event => {
-          // Set the remote video element's source to the received media stream
-          remoteVideoRef.current.srcObject = event.streams[0];
-        };
-
-        // Notify the signaling server that the user has joined the room
-        socketRef.current.emit('join-room', roomID);
-
-        // Handle when a new user connects to the room
-        socketRef.current.on('user-connected', userId => {
-          // Create an SDP offer to initiate the WebRTC connection
-          pcRef.current
-            .createOffer()
-            .then(offer => pcRef.current.setLocalDescription(offer)) // Set the local description with the offer
-            .then(() => {
-              // Send the SDP offer to the newly connected user via the signaling server
-            socketRef.current.emit('signal', {
-                to: userId, // Target user ID
-                from: socketRef.current.id, // Current user's socket ID
-                data: { sdp: pcRef.current.localDescription }, // SDP offer data
-              });
-            });
-        });
-
-        // Handle incoming signaling data (SDP or ICE candidates)
-        socketRef.current.on('signal', async ({ from, data }) => {
-          if (data.sdp) {
-            console.log("SDP sharing and handling : ", data.sdp);
-
-            // Set the remote description with the received SDP
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            if (data.sdp.type === 'offer') {
-              // If the SDP is an offer, create an SDP answer
-              const answer = await pcRef.current.createAnswer();
-              await pcRef.current.setLocalDescription(answer); // Set the local description with the answer
-              // Send the SDP answer back to the offerer via the signaling server
-              socketRef.current.emit('signal', {
-                to: from, // Target user ID
-                from: socketRef.current.id, // Current user's socket ID
-                data: { sdp: pcRef.current.localDescription }, // SDP answer data
-              });
-            }
-          } else if (data.candidate) {
-            console.log("ICE candidate sharing and handling : ", data.candidate);
-            // Add the received ICE candidate to the peer connection
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-          }
-        });
+            console.log('Shared SDP Offer:', pc.current.localDescription);
+          });
       });
 
-    // Cleanup function to disconnect the socket when the component unmounts
-    return () => socketRef.current.disconnect();
-  }, [roomID]); // Re-run the effect when the roomID changes
+      socket.current.on('signal', (data) => {
+        if (data.sdp) {
+          console.log('Received SDP:', data.sdp);
+          pc.current.setRemoteDescription(new RTCSessionDescription(data.sdp)).then(() => {
+            if (pc.current.remoteDescription.type === 'offer') {
+              pc.current
+                .createAnswer()
+                .then((answer) => {
+                  console.log('Generated SDP Answer:', answer);
+                  return pc.current.setLocalDescription(answer);
+                })
+                .then(() => {
+                  socket.current.emit('signal', {
+                    to: data.from,
+                    from: socket.current.id,
+                    data: { sdp: pc.current.localDescription },
+                  });
+                  console.log('Shared SDP Answer:', pc.current.localDescription);
+                });
+            }
+          });
+        } else if (data.candidate) {
+          console.log('Received ICE Candidate:', data.candidate);
+          pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      });
+    });
+  }, [roomID]);
 
   const toggleMute = () => {
     localVideoRef.current.srcObject.getAudioTracks()[0].enabled = muted;
