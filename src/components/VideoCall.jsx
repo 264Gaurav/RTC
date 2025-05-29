@@ -201,7 +201,7 @@ export default function VideoCall({ roomID }) {
       <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
 
         <div className="controls">
-          <button className='call-btn' onClick={toggleMute}>{muted? <img className='call-icon' src={inactiveMic} alt="Mic" /> : <img className='call-icon' src={activeMic} alt="Mic" /> }</button>
+          <button className='call-btn' onClick={toggleMute}>{muted? <img className='call-icon' src={activeMic} alt="Mic" /> : <img className='call-icon' src={inactiveMic} alt="Mic" /> }</button>
           <button className='call-btn' onClick={toggleVideo}>{videoOff? <img className='call-icon' src={cameraIcon} alt="camera" /> : <img className='call-icon' src={cameraOff} alt="camera" /> }</button>
           <button className='call-btn' onClick={()=>{socketRef.current.disconnect();window.location.reload();}}><img className='call-icon' src={endCallIcon} alt="End Call" /></button>
         </div>
