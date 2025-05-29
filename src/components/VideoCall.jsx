@@ -27,12 +27,13 @@ const ICE_SERVERS = {
   ],
 };
 
-export default function VideoCall({ roomID }) {
+export default function App({ roomID }) { // Changed to App as per React component export convention
   const localVideoRef = useRef();
   const remoteVideoRef = useRef();
   const pcRef = useRef(); // Peer connection reference - ICE
   const socketRef = useRef();
 
+  // Initialize muted and videoOff to false, meaning mic and video are initially ON
   const [muted, setMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
 
@@ -154,61 +155,393 @@ export default function VideoCall({ roomID }) {
       })
       .catch(error => {
         console.error('Error accessing media devices:', error);
+        toast.error('Error accessing media devices. Please check your camera/microphone permissions.');
       });
 
-    // Cleanup function to disconnect the socket when the component unmounts
+    // Cleanup function to disconnect the socket and close peer connection when the component unmounts
     return () => {
       console.log('Disconnecting socket and closing peer connection.');
-      socketRef.current.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
       if (pcRef.current) {
+        // Stop all tracks before closing the peer connection
+        if (localVideoRef.current && localVideoRef.current.srcObject) {
+          localVideoRef.current.srcObject.getTracks().forEach(track => track.stop());
+        }
         pcRef.current.close();
       }
     };
 
   }, [roomID]); // Re-run the effect when the roomID changes
 
+  // Function to toggle microphone mute/unmute
   const toggleMute = () => {
     if (localVideoRef.current && localVideoRef.current.srcObject) {
       const audioTracks = localVideoRef.current.srcObject.getAudioTracks();
       if (audioTracks.length > 0) {
-        audioTracks[0].enabled = !muted;
-        setMuted(!muted);
+        const newMutedState = !muted; // Determine the new muted state
+        audioTracks[0].enabled = !newMutedState; // Enable/disable the track based on the new state
+        setMuted(newMutedState); // Update the state
+        toast.success(`Mic ${(newMutedState === true) ? 'muted' : 'unmuted'}`);
       } else {
         console.warn('No audio tracks found to toggle mute.');
+        toast.error('No audio tracks found.');
       }
     }
-    toast.success(`Mic ${(muted === true) ? 'unmuted' : 'muted'}`);
   };
 
+  // Function to toggle video on/off
   const toggleVideo = () => {
     if (localVideoRef.current && localVideoRef.current.srcObject) {
       const videoTracks = localVideoRef.current.srcObject.getVideoTracks();
       if (videoTracks.length > 0) {
-        videoTracks[0].enabled = !videoOff;
-        setVideoOff(!videoOff);
+        const newVideoOffState = !videoOff; // Determine the new video off state
+        videoTracks[0].enabled = !newVideoOffState; // Enable/disable the track based on the new state
+        setVideoOff(newVideoOffState); // Update the state
+        toast.success(`Video ${(newVideoOffState === true) ? 'stopped' : 'started'}`);
       } else {
         console.warn('No video tracks found to toggle video.');
+        toast.error('No video tracks found.');
       }
     }
-    toast.success(`Video ${(videoOff === true) ? 'stopped' : 'started'}`);
+  };
+
+  // Function to end the call
+  const endCall = () => {
+    // Disconnect socket and reload the page to end the call and reset state
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+    // Stop local tracks before reloading
+    if (localVideoRef.current && localVideoRef.current.srcObject) {
+      localVideoRef.current.srcObject.getTracks().forEach(track => track.stop());
+    }
+    window.location.reload();
   };
 
   return (
-    <div className="video-container">
-      <h3 className="text-3xl font-bold mb-6 text-blue-400">Comm. Room ID: {roomID}</h3>
+    <>
 
-      <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
-      <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
 
-        <div className="controls">
-          <button className='call-btn' onClick={toggleMute}>{(muted === true) ? <img className='call-icon' src={activeMic} alt="Mic" /> : <img className='call-icon' src={inactiveMic} alt="Mic" /> }</button>
-          <button className='call-btn' onClick={toggleVideo}>{(videoOff === true) ? <img className='call-icon' src={cameraIcon} alt="camera" /> : <img className='call-icon' src={cameraOff} alt="camera" /> }</button>
-          <button className='call-btn' onClick={()=>{socketRef.current.disconnect();window.location.reload();}}><img className='call-icon' src={endCallIcon} alt="End Call" /></button>
+      <div className="video-container">
+        <h3 className="text-3xl font-bold mb-6 text-blue-400">Comm. Room ID: {roomID}</h3>
+
+        <div className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-lg overflow-hidden aspect-video">
+          {/* Remote Video Stream */}
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="remote-video"
+            style={{ transform: 'scaleX(-1)' }} // Mirror remote video
+          />
+          {/* Local Video Stream (Picture-in-Picture style) */}
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted // Local video should be muted to avoid echo
+            playsInline
+            className="local-video"
+            style={{ transform: 'scaleX(-1)' }} // Mirror local video
+          />
         </div>
 
-    </div>
+        {/* Call Controls */}
+        <div className="controls">
+          {/* Mute/Unmute Button */}
+          <button
+            onClick={toggleMute}
+            className="call-btn"
+          >
+            {/* Display active mic icon if not muted, inactive mic icon if muted */}
+            {muted ? (
+              <img className='call-icon' src={inactiveMic} alt="Mic Off" />
+            ) : (
+              <img className='call-icon' src={activeMic} alt="Mic On" />
+            )}
+          </button>
+
+          {/* Video On/Off Button */}
+          <button
+            onClick={toggleVideo}
+            className="call-btn"
+          >
+            {/* Display camera off icon if video is off, camera on icon if video is on */}
+            {videoOff ? (
+              <img className='call-icon' src={cameraOff} alt="Camera Off" />
+            ) : (
+              <img className='call-icon' src={cameraIcon} alt="Camera On" />
+            )}
+          </button>
+
+          {/* End Call Button */}
+          <button
+            onClick={endCall}
+            className="call-btn end-call-btn" // Added a specific class for end call button styling
+          >
+            <img className='call-icon' src={endCallIcon} alt="End Call" />
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// import React, { useRef, useEffect, useState } from 'react';
+// import io from 'socket.io-client';
+// import {toast} from 'react-hot-toast';
+
+// import activeMic from '../assets/icons/mic-on.svg'
+// import inactiveMic from '../assets/icons/mic-off.svg';
+// import cameraIcon from '../assets/icons/camera.svg';
+// import cameraOff from '../assets/icons/camera-off.svg';
+// import endCallIcon from '../assets/icons/call-end.svg';
+
+
+// // These environment variables would typically be configured in a .env file
+// // For demonstration, we'll use placeholder values if they're not defined.
+// // In a real application, ensure these are properly set up.
+// const SIGNALING_SERVER_URL = typeof import.meta.env.VITE_SIGNALING_SERVER_URL !== 'undefined'
+//   ? import.meta.env.VITE_SIGNALING_SERVER_URL
+//   : 'http://localhost:3001'; // Default for local testing
+
+// const ICE_SERVERS = {
+//   iceServers: [
+//     { urls: typeof import.meta.env.VITE_STUN_URL !== 'undefined' ? import.meta.env.VITE_STUN_URL : 'stun:stun.l.google.com:19302' },
+//     ...(typeof import.meta.env.VITE_TURN_URL !== 'undefined' ? [{
+//       urls: import.meta.env.VITE_TURN_URL,
+//       username: import.meta.env.VITE_TURN_USERNAME,
+//       credential: import.meta.env.VITE_TURN_CREDENTIAL,
+//     }] : []),
+//   ],
+// };
+
+// export default function VideoCall({ roomID }) {
+//   const localVideoRef = useRef();
+//   const remoteVideoRef = useRef();
+//   const pcRef = useRef(); // Peer connection reference - ICE
+//   const socketRef = useRef();
+
+//   const [muted, setMuted] = useState(false);
+//   const [videoOff, setVideoOff] = useState(false);
+
+
+//   useEffect(() => {
+//     // Initialize the socket connection to the signaling server
+//     console.log('Initializing socket connection to signaling server:', SIGNALING_SERVER_URL);
+//     socketRef.current = io(SIGNALING_SERVER_URL);
+
+//     // Request access to the user's media devices (camera and microphone)
+//     navigator.mediaDevices
+//       .getUserMedia({ video: true, audio: true })
+//       .then(stream => {
+//         console.log('Successfully obtained local media stream.');
+//         // Set the local video element's source to the user's media stream
+//         localVideoRef.current.srcObject = stream;
+
+//         // Create a new RTCPeerConnection instance with ICE server configurations
+//         console.log('Creating new RTCPeerConnection with ICE servers:', ICE_SERVERS);
+//         pcRef.current = new RTCPeerConnection(ICE_SERVERS);
+
+//         // Add each track (audio/video) from the user's media stream to the peer connection
+//         stream.getTracks().forEach(track => {
+//           pcRef.current.addTrack(track, stream);
+//           console.log(`Added track: ${track.kind} to peer connection.`);
+//         });
+
+//         // Handle the generation of ICE candidates
+//         pcRef.current.onicecandidate = event => {
+//           if (event.candidate) {
+//             console.log('Generated ICE candidate:', event.candidate);
+//             // Send the ICE candidate to the signaling server
+//             console.log('Sending ICE candidate to signaling server...');
+//             socketRef.current.emit('signal', {
+//               to: roomID, // Target room ID
+//               from: socketRef.current.id, // Current user's socket ID
+//               data: { candidate: event.candidate }, // ICE candidate data
+//             });
+//           } else {
+//             console.log('ICE gathering complete.');
+//           }
+//         };
+
+//         // Handle incoming media tracks from the remote peer
+//         pcRef.current.ontrack = event => {
+//           console.log('Received remote track:', event.track.kind);
+//           // Set the remote video element's source to the received media stream
+//           remoteVideoRef.current.srcObject = event.streams[0];
+//         };
+
+//         // Notify the signaling server that the user has joined the room
+//         console.log('Joining room:', roomID);
+//         socketRef.current.emit('join-room', roomID);
+
+//         // Handle when a new user connects to the room
+//         socketRef.current.on('user-connected', userId => {
+//           console.log(`User connected: ${userId}. Creating SDP offer...`);
+//           // Create an SDP offer to initiate the WebRTC connection
+//           pcRef.current
+//             .createOffer()
+//             .then(offer => {
+//               console.log('SDP offer created:', offer);
+//               return pcRef.current.setLocalDescription(offer); // Set the local description with the offer
+//             })
+//             .then(() => {
+//               console.log('Local description set with SDP offer.');
+//               // Send the SDP offer to the newly connected user via the signaling server
+//               console.log('Sending SDP offer to user:', userId);
+//               socketRef.current.emit('signal', {
+//                 to: userId, // Target user ID
+//                 from: socketRef.current.id, // Current user's socket ID
+//                 data: { sdp: pcRef.current.localDescription }, // SDP offer data
+//               });
+//             })
+//             .catch(error => {
+//               console.error('Error creating or setting SDP offer:', error);
+//             });
+//         });
+
+//         // Handle incoming signaling data (SDP or ICE candidates)
+//         socketRef.current.on('signal', async ({ from, data }) => {
+//           if (data.sdp) {
+//             console.log("Received SDP signal from:", from, "Type:", data.sdp.type, "SDP:", data.sdp);
+
+//             // Set the remote description with the received SDP
+//             try {
+//               await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+//               console.log('Remote description set with received SDP.');
+
+//               if (data.sdp.type === 'offer') {
+//                 console.log('SDP type is offer. Creating SDP answer...');
+//                 // If the SDP is an offer, create an SDP answer
+//                 const answer = await pcRef.current.createAnswer();
+//                 console.log('SDP answer created:', answer);
+//                 await pcRef.current.setLocalDescription(answer); // Set the local description with the answer
+//                 console.log('Local description set with SDP answer.');
+//                 // Send the SDP answer back to the offerer via the signaling server
+//                 console.log('Sending SDP answer to user:', from);
+//                 socketRef.current.emit('signal', {
+//                   to: from, // Target user ID
+//                   from: socketRef.current.id, // Current user's socket ID
+//                   data: { sdp: pcRef.current.localDescription }, // SDP answer data
+//                 });
+//               }
+//             } catch (error) {
+//               console.error('Error setting remote description or creating/setting answer:', error);
+//             }
+//           } else if (data.candidate) {
+//             console.log("Received ICE candidate from:", from, "Candidate:", data.candidate);
+//             // Add the received ICE candidate to the peer connection
+//             try {
+//               await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+//               console.log('ICE candidate added to peer connection.');
+//             } catch (error) {
+//               console.error('Error adding ICE candidate:', error);
+//             }
+//           }
+//         });
+//       })
+//       .catch(error => {
+//         console.error('Error accessing media devices:', error);
+//       });
+
+//     // Cleanup function to disconnect the socket when the component unmounts
+//     return () => {
+//       console.log('Disconnecting socket and closing peer connection.');
+//       socketRef.current.disconnect();
+//       if (pcRef.current) {
+//         pcRef.current.close();
+//       }
+//     };
+
+//   }, [roomID]); // Re-run the effect when the roomID changes
+
+//   const toggleMute = () => {
+//     if (localVideoRef.current && localVideoRef.current.srcObject) {
+//       const audioTracks = localVideoRef.current.srcObject.getAudioTracks();
+//       if (audioTracks.length > 0) {
+//         audioTracks[0].enabled = !muted;
+//         setMuted(!muted);
+//       } else {
+//         console.warn('No audio tracks found to toggle mute.');
+//       }
+//     }
+//     toast.success(`Mic ${(muted === true) ? 'unmuted' : 'muted'}`);
+//   };
+
+//   const toggleVideo = () => {
+//     if (localVideoRef.current && localVideoRef.current.srcObject) {
+//       const videoTracks = localVideoRef.current.srcObject.getVideoTracks();
+//       if (videoTracks.length > 0) {
+//         videoTracks[0].enabled = !videoOff;
+//         setVideoOff(!videoOff);
+//       } else {
+//         console.warn('No video tracks found to toggle video.');
+//       }
+//     }
+//     toast.success(`Video ${(videoOff === true) ? 'stopped' : 'started'}`);
+//   };
+
+//   return (
+//     <div className="video-container">
+//       <h3 className="text-3xl font-bold mb-6 text-blue-400">Comm. Room ID: {roomID}</h3>
+
+//       <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
+//       <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
+
+//         <div className="controls">
+//           <button className='call-btn' onClick={toggleMute}>{(muted === true) ? <img className='call-icon' src={activeMic} alt="Mic" /> : <img className='call-icon' src={inactiveMic} alt="Mic" /> }</button>
+//           <button className='call-btn' onClick={toggleVideo}>{(videoOff === true) ? <img className='call-icon' src={cameraIcon} alt="camera" /> : <img className='call-icon' src={cameraOff} alt="camera" /> }</button>
+//           <button className='call-btn' onClick={()=>{socketRef.current.disconnect();window.location.reload();}}><img className='call-icon' src={endCallIcon} alt="End Call" /></button>
+//         </div>
+
+//     </div>
+//   );
+// }
+
+
+
+
+
+
+
+
+
 
 
 
