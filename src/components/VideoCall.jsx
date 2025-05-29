@@ -1,5 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import io from 'socket.io-client';
+import {toast} from 'react-hot-toast';
+
+import activeMic from '../assets/icons/mic-on.svg'
+import inactiveMic from '../assets/icons/mic-off.svg';
+import cameraIcon from '../assets/icons/camera.svg';
+import cameraOff from '../assets/icons/camera-off.svg';
+import endCallIcon from '../assets/icons/call-end.svg';
+
 
 // These environment variables would typically be configured in a .env file
 // For demonstration, we'll use placeholder values if they're not defined.
@@ -24,8 +32,10 @@ export default function VideoCall({ roomID }) {
   const remoteVideoRef = useRef();
   const pcRef = useRef(); // Peer connection reference - ICE
   const socketRef = useRef();
+
   const [muted, setMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
+
 
   useEffect(() => {
     // Initialize the socket connection to the signaling server
@@ -154,6 +164,7 @@ export default function VideoCall({ roomID }) {
         pcRef.current.close();
       }
     };
+
   }, [roomID]); // Re-run the effect when the roomID changes
 
   const toggleMute = () => {
@@ -162,11 +173,11 @@ export default function VideoCall({ roomID }) {
       if (audioTracks.length > 0) {
         audioTracks[0].enabled = !muted;
         setMuted(!muted);
-        console.log(`Audio muted: ${!audioTracks[0].enabled}`);
       } else {
         console.warn('No audio tracks found to toggle mute.');
       }
     }
+    toast.success(`Mic ${(muted === true) ? 'unmuted' : 'muted'}`);
   };
 
   const toggleVideo = () => {
@@ -175,11 +186,11 @@ export default function VideoCall({ roomID }) {
       if (videoTracks.length > 0) {
         videoTracks[0].enabled = !videoOff;
         setVideoOff(!videoOff);
-        console.log(`Video off: ${!videoTracks[0].enabled}`);
       } else {
         console.warn('No video tracks found to toggle video.');
       }
     }
+    toast.success(`Video ${(videoOff === true) ? 'stopped' : 'started'}`);
   };
 
   return (
@@ -192,7 +203,7 @@ export default function VideoCall({ roomID }) {
           }
         `}
       </style>
-      <h3 className="text-3xl font-bold mb-6 text-blue-400">Video Call - Room ID: {roomID}</h3>
+      <h3 className="text-3xl font-bold mb-6 text-blue-400">Comm. Room ID: {roomID}</h3>
       <div className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col md:flex-row">
         {/* Remote video of peer 2 */}
         <div className="relative w-full md:w-1/2 p-2">
@@ -224,7 +235,36 @@ export default function VideoCall({ roomID }) {
         </div>
       </div>
 
-      <div className="flex space-x-4 mt-6">
+
+
+      <div className="controls">
+        <button className="call-btn" onClick={toggleMute}>
+          {muted ? (
+            <img className="call-icon" src={inactiveMic} alt="Mic" />
+          ) : (
+            <img className="call-icon" src={activeMic} alt="Mic" />
+          )}
+        </button>
+        <button className="call-btn" onClick={toggleVideo}>
+          {videoOff ? (
+            <img className="call-icon" src={cameraOff} alt="Camera" />
+          ) : (
+            <img className="call-icon" src={cameraIcon} alt="Camera" />
+          )}
+        </button>
+        <button
+          className="call-btn end-call"
+          onClick={() => {
+            socketRef.current.disconnect();
+            window.location.reload();
+          }}
+        >
+          <img className="call-icon" src={endCallIcon} alt="End Call" />
+        </button>
+      </div>
+
+
+      {/* <div className="flex space-x-4 mt-6">
         <button
           onClick={toggleMute}
           className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
@@ -237,7 +277,7 @@ export default function VideoCall({ roomID }) {
         >
           {videoOff ? 'Start Video' : 'Stop Video'}
         </button>
-      </div>
+      </div> */}
     </div>
   );
 }
