@@ -194,90 +194,18 @@ export default function VideoCall({ roomID }) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4 font-inter">
-      <style>
-        {`
-          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-          body {
-            font-family: 'Inter', sans-serif;
-          }
-        `}
-      </style>
+    <div className="video-container">
       <h3 className="text-3xl font-bold mb-6 text-blue-400">Comm. Room ID: {roomID}</h3>
-      <div className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col md:flex-row">
-        {/* Remote video of peer 2 */}
-        <div className="relative w-full md:w-1/2 p-2">
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-auto rounded-md border-2 border-blue-500 shadow-md aspect-video bg-black"
-            style={{ minHeight: '200px' }}
-          />
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-700 bg-opacity-75 text-white px-3 py-1 rounded-full text-sm">
-            Remote User
-          </div>
+
+      <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
+      <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
+
+        <div className="controls">
+          <button className='call-btn' onClick={toggleMute}>{muted? <img className='call-icon' src={inactiveMic} alt="Mic" /> : <img className='call-icon' src={activeMic} alt="Mic" /> }</button>
+          <button className='call-btn' onClick={toggleVideo}>{videoOff? <img className='call-icon' src={cameraIcon} alt="camera" /> : <img className='call-icon' src={cameraOff} alt="camera" /> }</button>
+          <button className='call-btn' onClick={()=>{socketRef.current.disconnect();window.location.reload();}}><img className='call-icon' src={endCallIcon} alt="End Call" /></button>
         </div>
 
-        {/* Local video (self-view) */}
-        <div className="relative w-full md:w-1/2 p-2">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted // Muted for local preview
-            playsInline
-            className="w-full h-auto rounded-md border-2 border-green-500 shadow-md aspect-video bg-black"
-            style={{ minHeight: '200px' }}
-          />
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-700 bg-opacity-75 text-white px-3 py-1 rounded-full text-sm">
-            You
-          </div>
-        </div>
-      </div>
-
-
-
-      <div className="controls">
-        <button className="call-btn" onClick={toggleMute}>
-          {muted ? (
-            <img className="call-icon" src={inactiveMic} alt="Mic" />
-          ) : (
-            <img className="call-icon" src={activeMic} alt="Mic" />
-          )}
-        </button>
-        <button className="call-btn" onClick={toggleVideo}>
-          {videoOff ? (
-            <img className="call-icon" src={cameraOff} alt="Camera" />
-          ) : (
-            <img className="call-icon" src={cameraIcon} alt="Camera" />
-          )}
-        </button>
-        <button
-          className="call-btn end-call"
-          onClick={() => {
-            socketRef.current.disconnect();
-            window.location.reload();
-          }}
-        >
-          <img className="call-icon" src={endCallIcon} alt="End Call" />
-        </button>
-      </div>
-
-
-      {/* <div className="flex space-x-4 mt-6">
-        <button
-          onClick={toggleMute}
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
-        >
-          {muted ? 'Unmute' : 'Mute'}
-        </button>
-        <button
-          onClick={toggleVideo}
-          className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75"
-        >
-          {videoOff ? 'Start Video' : 'Stop Video'}
-        </button>
-      </div> */}
     </div>
   );
 }
