@@ -19,7 +19,7 @@ export default function VideoCall({ roomID }) {
   const localVideoRef = useRef();
   const remoteVideoRef = useRef();
   const pcRef = useRef(); //peer connection reference - ICE
-  const socketRef = useRef();
+  const socket = useRef();
   const [muted, setMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
 
