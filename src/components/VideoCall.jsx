@@ -222,30 +222,12 @@ export default function App({ roomID }) { // Changed to App as per React compone
 
   return (
     <>
-
-
       <div className="video-container">
         <h3 className="text-3xl font-bold mb-6 text-blue-400">Comm. Room ID: {roomID}</h3>
 
-        <div className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-lg overflow-hidden aspect-video">
-          {/* Remote Video Stream */}
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="remote-video"
-            style={{ transform: 'scaleX(-1)' }} // Mirror remote video
-          />
-          {/* Local Video Stream (Picture-in-Picture style) */}
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted // Local video should be muted to avoid echo
-            playsInline
-            className="local-video"
-            style={{ transform: 'scaleX(-1)' }} // Mirror local video
-          />
-        </div>
+        <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
+        <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
+
 
         {/* Call Controls */}
         <div className="controls">
