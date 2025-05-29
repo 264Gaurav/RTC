@@ -1,13 +1,17 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const SIGNALING_SERVER_URL = import.meta.env.VITE_SIGNALING_SERVER_URL;
+// These environment variables would typically be configured in a .env file
+// For demonstration, we'll use placeholder values if they're not defined.
+// In a real application, ensure these are properly set up.
+const SIGNALING_SERVER_URL = typeof import.meta.env.VITE_SIGNALING_SERVER_URL !== 'undefined'
+  ? import.meta.env.VITE_SIGNALING_SERVER_URL
+  : 'http://localhost:3001'; // Default for local testing
 
 const ICE_SERVERS = {
   iceServers: [
-    { urls: import.meta.env.VITE_STUN_URL },
-    ...(import.meta.env.VITE_TURN_URL ? [{
+    { urls: typeof import.meta.env.VITE_STUN_URL !== 'undefined' ? import.meta.env.VITE_STUN_URL : 'stun:stun.l.google.com:19302' },
+    ...(typeof import.meta.env.VITE_TURN_URL !== 'undefined' ? [{
       urls: import.meta.env.VITE_TURN_URL,
       username: import.meta.env.VITE_TURN_USERNAME,
       credential: import.meta.env.VITE_TURN_CREDENTIAL,
@@ -18,111 +22,390 @@ const ICE_SERVERS = {
 export default function VideoCall({ roomID }) {
   const localVideoRef = useRef();
   const remoteVideoRef = useRef();
-  const pcRef = useRef(); //peer connection reference - ICE
-  const socket = useRef();
+  const pcRef = useRef(); // Peer connection reference - ICE
+  const socketRef = useRef();
   const [muted, setMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
 
   useEffect(() => {
-    socket.current = io(SIGNALING_SERVER_URL);
+    // Initialize the socket connection to the signaling server
+    console.log('Initializing socket connection to signaling server:', SIGNALING_SERVER_URL);
+    socketRef.current = io(SIGNALING_SERVER_URL);
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
-      localRef.current.srcObject = stream;
+    // Request access to the user's media devices (camera and microphone)
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        console.log('Successfully obtained local media stream.');
+        // Set the local video element's source to the user's media stream
+        localVideoRef.current.srcObject = stream;
 
-      pc.current = new RTCPeerConnection(ICE_SERVERS);
+        // Create a new RTCPeerConnection instance with ICE server configurations
+        console.log('Creating new RTCPeerConnection with ICE servers:', ICE_SERVERS);
+        pcRef.current = new RTCPeerConnection(ICE_SERVERS);
 
-      stream.getTracks().forEach((track) => pc.current.addTrack(track, stream));
+        // Add each track (audio/video) from the user's media stream to the peer connection
+        stream.getTracks().forEach(track => {
+          pcRef.current.addTrack(track, stream);
+          console.log(`Added track: ${track.kind} to peer connection.`);
+        });
 
-      pc.current.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('Generated ICE Candidate:', event.candidate);
-          socket.current.emit('signal', {
-            to: roomID,
-            from: socket.current.id,
-            data: { candidate: event.candidate },
-          });
-          console.log('Shared ICE Candidate:', event.candidate);
-        }
-      };
-
-      pc.current.ontrack = (event) => {
-        console.log('Received remote track:', event.streams[0]);
-        remoteRef.current.srcObject = event.streams[0];
-      };
-
-      socket.current.emit('join-room', roomID);
-      console.log('Joined room:', roomID);
-
-      socket.current.on('user-connected', (id) => {
-        console.log('User connected:', id);
-        pc.current
-          .createOffer()
-          .then((offer) => {
-            console.log('Generated SDP Offer:', offer);
-            return pc.current.setLocalDescription(offer);
-          })
-          .then(() => {
-            socket.current.emit('signal', {
-              to: id,
-              from: socket.current.id,
-              data: { sdp: pc.current.localDescription },
+        // Handle the generation of ICE candidates
+        pcRef.current.onicecandidate = event => {
+          if (event.candidate) {
+            console.log('Generated ICE candidate:', event.candidate);
+            // Send the ICE candidate to the signaling server
+            console.log('Sending ICE candidate to signaling server...');
+            socketRef.current.emit('signal', {
+              to: roomID, // Target room ID
+              from: socketRef.current.id, // Current user's socket ID
+              data: { candidate: event.candidate }, // ICE candidate data
             });
-            console.log('Shared SDP Offer:', pc.current.localDescription);
-          });
+          } else {
+            console.log('ICE gathering complete.');
+          }
+        };
+
+        // Handle incoming media tracks from the remote peer
+        pcRef.current.ontrack = event => {
+          console.log('Received remote track:', event.track.kind);
+          // Set the remote video element's source to the received media stream
+          remoteVideoRef.current.srcObject = event.streams[0];
+        };
+
+        // Notify the signaling server that the user has joined the room
+        console.log('Joining room:', roomID);
+        socketRef.current.emit('join-room', roomID);
+
+        // Handle when a new user connects to the room
+        socketRef.current.on('user-connected', userId => {
+          console.log(`User connected: ${userId}. Creating SDP offer...`);
+          // Create an SDP offer to initiate the WebRTC connection
+          pcRef.current
+            .createOffer()
+            .then(offer => {
+              console.log('SDP offer created:', offer);
+              return pcRef.current.setLocalDescription(offer); // Set the local description with the offer
+            })
+            .then(() => {
+              console.log('Local description set with SDP offer.');
+              // Send the SDP offer to the newly connected user via the signaling server
+              console.log('Sending SDP offer to user:', userId);
+              socketRef.current.emit('signal', {
+                to: userId, // Target user ID
+                from: socketRef.current.id, // Current user's socket ID
+                data: { sdp: pcRef.current.localDescription }, // SDP offer data
+              });
+            })
+            .catch(error => {
+              console.error('Error creating or setting SDP offer:', error);
+            });
+        });
+
+        // Handle incoming signaling data (SDP or ICE candidates)
+        socketRef.current.on('signal', async ({ from, data }) => {
+          if (data.sdp) {
+            console.log("Received SDP signal from:", from, "Type:", data.sdp.type, "SDP:", data.sdp);
+
+            // Set the remote description with the received SDP
+            try {
+              await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+              console.log('Remote description set with received SDP.');
+
+              if (data.sdp.type === 'offer') {
+                console.log('SDP type is offer. Creating SDP answer...');
+                // If the SDP is an offer, create an SDP answer
+                const answer = await pcRef.current.createAnswer();
+                console.log('SDP answer created:', answer);
+                await pcRef.current.setLocalDescription(answer); // Set the local description with the answer
+                console.log('Local description set with SDP answer.');
+                // Send the SDP answer back to the offerer via the signaling server
+                console.log('Sending SDP answer to user:', from);
+                socketRef.current.emit('signal', {
+                  to: from, // Target user ID
+                  from: socketRef.current.id, // Current user's socket ID
+                  data: { sdp: pcRef.current.localDescription }, // SDP answer data
+                });
+              }
+            } catch (error) {
+              console.error('Error setting remote description or creating/setting answer:', error);
+            }
+          } else if (data.candidate) {
+            console.log("Received ICE candidate from:", from, "Candidate:", data.candidate);
+            // Add the received ICE candidate to the peer connection
+            try {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+              console.log('ICE candidate added to peer connection.');
+            } catch (error) {
+              console.error('Error adding ICE candidate:', error);
+            }
+          }
+        });
+      })
+      .catch(error => {
+        console.error('Error accessing media devices:', error);
       });
 
-      socket.current.on('signal', (data) => {
-        if (data.sdp) {
-          console.log('Received SDP:', data.sdp);
-          pc.current.setRemoteDescription(new RTCSessionDescription(data.sdp)).then(() => {
-            if (pc.current.remoteDescription.type === 'offer') {
-              pc.current
-                .createAnswer()
-                .then((answer) => {
-                  console.log('Generated SDP Answer:', answer);
-                  return pc.current.setLocalDescription(answer);
-                })
-                .then(() => {
-                  socket.current.emit('signal', {
-                    to: data.from,
-                    from: socket.current.id,
-                    data: { sdp: pc.current.localDescription },
-                  });
-                  console.log('Shared SDP Answer:', pc.current.localDescription);
-                });
-            }
-          });
-        } else if (data.candidate) {
-          console.log('Received ICE Candidate:', data.candidate);
-          pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-        }
-      });
-    });
-  }, [roomID]);
+    // Cleanup function to disconnect the socket when the component unmounts
+    return () => {
+      console.log('Disconnecting socket and closing peer connection.');
+      socketRef.current.disconnect();
+      if (pcRef.current) {
+        pcRef.current.close();
+      }
+    };
+  }, [roomID]); // Re-run the effect when the roomID changes
 
   const toggleMute = () => {
-    localVideoRef.current.srcObject.getAudioTracks()[0].enabled = muted;
-    setMuted(!muted);
+    if (localVideoRef.current && localVideoRef.current.srcObject) {
+      const audioTracks = localVideoRef.current.srcObject.getAudioTracks();
+      if (audioTracks.length > 0) {
+        audioTracks[0].enabled = !muted;
+        setMuted(!muted);
+        console.log(`Audio muted: ${!audioTracks[0].enabled}`);
+      } else {
+        console.warn('No audio tracks found to toggle mute.');
+      }
+    }
   };
 
   const toggleVideo = () => {
-    localVideoRef.current.srcObject.getVideoTracks()[0].enabled = videoOff;
-    setVideoOff(!videoOff);
+    if (localVideoRef.current && localVideoRef.current.srcObject) {
+      const videoTracks = localVideoRef.current.srcObject.getVideoTracks();
+      if (videoTracks.length > 0) {
+        videoTracks[0].enabled = !videoOff;
+        setVideoOff(!videoOff);
+        console.log(`Video off: ${!videoTracks[0].enabled}`);
+      } else {
+        console.warn('No video tracks found to toggle video.');
+      }
+    }
   };
 
   return (
-    <div className="video-container">
-      {/* Remote video of peer 2 */}
-      <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
-      {/* Local video (self-view) */}
-      <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
-      <div className="controls">
-        <button onClick={toggleMute}>{muted ? 'Unmute' : 'Mute'}</button>
-        <button onClick={toggleVideo}>{videoOff ? 'Start Video' : 'Stop Video'}</button>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4 font-inter">
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+          body {
+            font-family: 'Inter', sans-serif;
+          }
+        `}
+      </style>
+      <h3 className="text-3xl font-bold mb-6 text-blue-400">Video Call - Room ID: {roomID}</h3>
+      <div className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col md:flex-row">
+        {/* Remote video of peer 2 */}
+        <div className="relative w-full md:w-1/2 p-2">
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="w-full h-auto rounded-md border-2 border-blue-500 shadow-md aspect-video bg-black"
+            style={{ minHeight: '200px' }}
+          />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-700 bg-opacity-75 text-white px-3 py-1 rounded-full text-sm">
+            Remote User
+          </div>
+        </div>
+
+        {/* Local video (self-view) */}
+        <div className="relative w-full md:w-1/2 p-2">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted // Muted for local preview
+            playsInline
+            className="w-full h-auto rounded-md border-2 border-green-500 shadow-md aspect-video bg-black"
+            style={{ minHeight: '200px' }}
+          />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-700 bg-opacity-75 text-white px-3 py-1 rounded-full text-sm">
+            You
+          </div>
+        </div>
+      </div>
+
+      <div className="flex space-x-4 mt-6">
+        <button
+          onClick={toggleMute}
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
+        >
+          {muted ? 'Unmute' : 'Mute'}
+        </button>
+        <button
+          onClick={toggleVideo}
+          className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75"
+        >
+          {videoOff ? 'Start Video' : 'Stop Video'}
+        </button>
       </div>
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// import React, { useRef, useEffect, useState } from 'react';
+// import io from 'socket.io-client';
+
+// const SIGNALING_SERVER_URL = import.meta.env.VITE_SIGNALING_SERVER_URL;
+
+// const ICE_SERVERS = {
+//   iceServers: [
+//     { urls: import.meta.env.VITE_STUN_URL },
+//     ...(import.meta.env.VITE_TURN_URL ? [{
+//       urls: import.meta.env.VITE_TURN_URL,
+//       username: import.meta.env.VITE_TURN_USERNAME,
+//       credential: import.meta.env.VITE_TURN_CREDENTIAL,
+//     }] : []),
+//   ],
+// };
+
+// export default function VideoCall({ roomID }) {
+//   const localVideoRef = useRef();
+//   const remoteVideoRef = useRef();
+//   const pcRef = useRef(); //peer connection reference - ICE
+//   const socketRef = useRef();
+//   const [muted, setMuted] = useState(false);
+//   const [videoOff, setVideoOff] = useState(false);
+
+//   useEffect(() => {
+//     // Initialize the socket connection to the signaling server
+//     socketRef.current = io(SIGNALING_SERVER_URL);
+
+//     // Request access to the user's media devices (camera and microphone)
+//     navigator.mediaDevices
+//       .getUserMedia({ video: true, audio: true })
+//       .then(stream => {
+//         // Set the local video element's source to the user's media stream
+//         localVideoRef.current.srcObject = stream;
+
+//         // Create a new RTCPeerConnection instance with ICE server configurations
+//         pcRef.current = new RTCPeerConnection(ICE_SERVERS);
+
+//         // Add each track (audio/video) from the user's media stream to the peer connection
+//         stream.getTracks().forEach(track => {
+//           pcRef.current.addTrack(track, stream);
+//         });
+
+//         // Handle the generation of ICE candidates
+//         pcRef.current.onicecandidate = event => {
+//           if (event.candidate) {
+//             // Send the ICE candidate to the signaling server
+//             socketRef.current.emit('signal', {
+//               to: roomID, // Target room ID
+//               from: socketRef.current.id, // Current user's socket ID
+//               data: { candidate: event.candidate }, // ICE candidate data
+//             });
+//           }
+//         };
+
+//         // Handle incoming media tracks from the remote peer
+//         pcRef.current.ontrack = event => {
+//           // Set the remote video element's source to the received media stream
+//           remoteVideoRef.current.srcObject = event.streams[0];
+//         };
+
+//         // Notify the signaling server that the user has joined the room
+//         socketRef.current.emit('join-room', roomID);
+
+//         // Handle when a new user connects to the room
+//         socketRef.current.on('user-connected', userId => {
+//           // Create an SDP offer to initiate the WebRTC connection
+//           pcRef.current
+//             .createOffer()
+//             .then(offer => pcRef.current.setLocalDescription(offer)) // Set the local description with the offer
+//             .then(() => {
+//               // Send the SDP offer to the newly connected user via the signaling server
+//             socketRef.current.emit('signal', {
+//                 to: userId, // Target user ID
+//                 from: socketRef.current.id, // Current user's socket ID
+//                 data: { sdp: pcRef.current.localDescription }, // SDP offer data
+//               });
+//             });
+//         });
+
+//         // Handle incoming signaling data (SDP or ICE candidates)
+//         socketRef.current.on('signal', async ({ from, data }) => {
+//           if (data.sdp) {
+//             console.log("SDP sharing and handling : ", data.sdp);
+
+//             // Set the remote description with the received SDP
+//             await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+//             if (data.sdp.type === 'offer') {
+//               // If the SDP is an offer, create an SDP answer
+//               const answer = await pcRef.current.createAnswer();
+//               await pcRef.current.setLocalDescription(answer); // Set the local description with the answer
+//               // Send the SDP answer back to the offerer via the signaling server
+//               socketRef.current.emit('signal', {
+//                 to: from, // Target user ID
+//                 from: socketRef.current.id, // Current user's socket ID
+//                 data: { sdp: pcRef.current.localDescription }, // SDP answer data
+//               });
+//             }
+//           } else if (data.candidate) {
+//             console.log("ICE candidate sharing and handling : ", data.candidate);
+//             // Add the received ICE candidate to the peer connection
+//             await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+//           }
+//         });
+//       });
+
+//     // Cleanup function to disconnect the socket when the component unmounts
+//     return () => socketRef.current.disconnect();
+//   }, [roomID]); // Re-run the effect when the roomID changes
+
+//   const toggleMute = () => {
+//     localVideoRef.current.srcObject.getAudioTracks()[0].enabled = muted;
+//     setMuted(!muted);
+//   };
+
+//   const toggleVideo = () => {
+//     localVideoRef.current.srcObject.getVideoTracks()[0].enabled = videoOff;
+//     setVideoOff(!videoOff);
+//   };
+
+//   return (
+//     <div className="video-container">
+//       {/* Remote video of peer 2 */}
+//       <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
+//       {/* Local video (self-view) */}
+//       <video ref={localVideoRef} autoPlay muted playsInline className="local-video" />
+//       <div className="controls">
+//         <button onClick={toggleMute}>{muted ? 'Unmute' : 'Mute'}</button>
+//         <button onClick={toggleVideo}>{videoOff ? 'Start Video' : 'Stop Video'}</button>
+//       </div>
+//     </div>
+//   );
+// }
 
 
 
