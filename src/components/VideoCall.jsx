@@ -23,30 +23,119 @@ export default function VideoCall({ roomID }) {
   const [muted,setMuted]=useState(false),[videoOff,setVideoOff]=useState(false),
         [sharing,setSharing]=useState(false);
 
-  useEffect(()=>{
-    socket.current=io(SIGNALING_SERVER_URL);
-    navigator.mediaDevices.getUserMedia({video:true,audio:true}).then(stream=>{
-      localRef.current.srcObject=stream;
-      pc.current=new RTCPeerConnection(ICE_SERVERS);
-      stream.getTracks().forEach(t=>pc.current.addTrack(t,stream));
-      pc.current.onicecandidate=e=>e.candidate&&socket.current.emit('signal',{to:roomID,from:socket.current.id,data:{candidate:e.candidate}});
-      pc.current.ontrack=e=>{remoteRef.current.srcObject=e.streams[0];};
-      socket.current.emit('join-room',roomID);
-      socket.current.on('user-connected',id=>{pc.current.createOffer().then(o=>pc.current.setLocalDescription(o)).then(()=>socket.current.emit('signal',{to:id,from:socket.current.id,data:{sdp:pc.current.localDescription}}));});
-      socket.current.on('signal',async({from,data})=>{
-        if(from===socket.current.id) return;
-        if(data.sdp){
-          await pc.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          if(data.sdp.type==='offer'){
-            const ans=await pc.current.createAnswer();
-            await pc.current.setLocalDescription(ans);
-            socket.current.emit('signal',{to:from,from:socket.current.id,data:{sdp:pc.current.localDescription}});
-          }
-        } else if(data.candidate) await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+  // useEffect(()=>{
+  //   socket.current=io(SIGNALING_SERVER_URL);
+  //   navigator.mediaDevices.getUserMedia({video:true,audio:true}).then(stream=>{
+  //     localRef.current.srcObject=stream;
+  //     pc.current=new RTCPeerConnection(ICE_SERVERS);
+  //     stream.getTracks().forEach(t=>pc.current.addTrack(t,stream));
+  //     pc.current.onicecandidate=e=>e.candidate&&socket.current.emit('signal',{to:roomID,from:socket.current.id,data:{candidate:e.candidate}});
+  //     pc.current.ontrack=e=>{remoteRef.current.srcObject=e.streams[0];};
+  //     socket.current.emit('join-room',roomID);
+  //     socket.current.on('user-connected',id=>{pc.current.createOffer().then(o=>pc.current.setLocalDescription(o)).then(()=>socket.current.emit('signal',{to:id,from:socket.current.id,data:{sdp:pc.current.localDescription}}));});
+  //     socket.current.on('signal',async({from,data})=>{
+  //       if(from===socket.current.id) return;
+  //       if(data.sdp){
+  //         await pc.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+  //         if(data.sdp.type==='offer'){
+  //           const ans=await pc.current.createAnswer();
+  //           await pc.current.setLocalDescription(ans);
+  //           socket.current.emit('signal',{to:from,from:socket.current.id,data:{sdp:pc.current.localDescription}});
+  //         }
+  //       } else if(data.candidate) await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+  //     });
+  //   });
+  //   return ()=>socket.current.disconnect();
+  // },[roomID]);
+
+
+  useEffect(() => {
+    socket.current = io(SIGNALING_SERVER_URL);
+
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+      localRef.current.srcObject = stream;
+
+      pc.current = new RTCPeerConnection(ICE_SERVERS);
+
+      // Add tracks to the peer connection
+      stream.getTracks().forEach((track) => pc.current.addTrack(track, stream));
+
+      // Log ICE candidates generated locally
+      pc.current.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('Generated ICE Candidate:', event.candidate);
+          socket.current.emit('signal', {
+            to: roomID,
+            from: socket.current.id,
+            data: { candidate: event.candidate },
+          });
+        }
+      };
+
+      // Log STUN server response
+      pc.current.oniceconnectionstatechange = () => {
+        console.log('ICE Connection State:', pc.current.iceConnectionState);
+      };
+
+      // Log remote stream tracks
+      pc.current.ontrack = (event) => {
+        console.log('Remote stream track received:', event.streams[0]);
+        remoteRef.current.srcObject = event.streams[0];
+      };
+
+      // Join the room
+      socket.current.emit('join-room', roomID);
+
+      // Handle user connection
+      socket.current.on('user-connected', (id) => {
+        console.log('User connected:', id);
+
+        pc.current
+          .createOffer()
+          .then((offer) => {
+            console.log('Created Offer:', offer);
+            return pc.current.setLocalDescription(offer);
+          })
+          .then(() => {
+            socket.current.emit('signal', {
+              to: id,
+              from: socket.current.id,
+              data: { sdp: pc.current.localDescription },
+            });
+          });
+      });
+
+      // Handle incoming signals
+      socket.current.on('signal', (data) => {
+        console.log('Signal received:', data);
+
+        if (data.sdp) {
+          pc.current.setRemoteDescription(new RTCSessionDescription(data.sdp)).then(() => {
+            if (pc.current.remoteDescription.type === 'offer') {
+              pc.current
+                .createAnswer()
+                .then((answer) => {
+                  console.log('Created Answer:', answer);
+                  return pc.current.setLocalDescription(answer);
+                })
+                .then(() => {
+                  socket.current.emit('signal', {
+                    to: data.from,
+                    from: socket.current.id,
+                    data: { sdp: pc.current.localDescription },
+                  });
+                });
+            }
+          });
+        } else if (data.candidate) {
+          console.log('Received ICE Candidate:', data.candidate);
+          pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
       });
     });
-    return ()=>socket.current.disconnect();
-  },[roomID]);
+  }, [roomID]);
+
+
 
   const toggleMute=()=>{const audio=localRef.current.srcObject.getAudioTracks()[0];audio.enabled=!audio.enabled;setMuted(!muted);};
   const toggleVideo=()=>{const vid=localRef.current.srcObject.getVideoTracks()[0];vid.enabled=!vid.enabled;setVideoOff(!videoOff);};
